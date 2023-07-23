@@ -66,7 +66,7 @@ def send(number):
                                 users[i["phone"]] = i['first_name']
                     else:
                         print("IndexedDB data is not available on the new page.")
-                    on_contacts = page.query_selector(".chatlist-bottom").query_selector("ul")
+                    on_contacts = page.query_selector(".chatlist-top").query_selector_all("ul")[1]
                     if on_contacts:
                         text_message = input("Insert your message: ")
                         if len(text_message) == 0:
