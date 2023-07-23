@@ -80,7 +80,7 @@ def send(number):
                             page.wait_for_selector(".input-message-input.scrollable.scrollable-y.i18n.no-scrollbar")
                             inputs = page.query_selector(".input-message-input.scrollable.scrollable-y.i18n.no-scrollbar")
                             if inputs:
-                                inputs.fill("text")
+                                inputs.fill(text_message)
                                 page.query_selector(".btn-icon.tgico-none.btn-circle.z-depth-1.btn-send.animated-button-icon.rp.send").click()
                     time.sleep(40000)
     except Exception as e:
