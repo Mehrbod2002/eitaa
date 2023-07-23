@@ -73,7 +73,7 @@ def send(number):
                             raise "Text message is empty"
                         list_items = on_contacts.query_selector_all('li')
                         while len(list_items) <= len(users)-5:
-                            page.evaluate('document.querySelector(".scrollable.scrollable-y.tabs-tab.chatlist-parts.active.with-contacts").scroll(0,document.body.scrollHeight+10000000)')
+                            page.evaluate('document.querySelector(".scrollable.scrollable-y.tabs-tab.chatlist-parts.active").scroll(0,document.body.scrollHeight+10000000)')
                             list_items = on_contacts.query_selector_all('li')
                         for item in list_items:
                             item.click()
