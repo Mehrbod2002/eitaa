@@ -81,9 +81,9 @@ def send(number):
                             inputs = page.query_selector(".input-message-input.scrollable.scrollable-y.i18n.no-scrollbar")
                             if inputs:
                                 inputs.fill(text_message)
-                                page.wait_for_timeout(100)
+                                page.wait_for_selector(".btn-icon.tgico-none.btn-circle.z-depth-1.btn-send.animated-button-icon.rp.send")
                                 page.query_selector(".btn-icon.tgico-none.btn-circle.z-depth-1.btn-send.animated-button-icon.rp.send").click()
-                    time.sleep(10000)
+                    time.sleep(1000)
     except Exception as e:
         print(f"Error: {e}")
 
@@ -154,7 +154,7 @@ def add(number):
                             else:
                                 added += 1
                     print(f"{added} numbers added .")
-                    time.sleep(10000)
+                    time.sleep(1000)
     except Exception as e:
         print(f"Error: {e}")
 
