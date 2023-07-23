@@ -29,7 +29,7 @@ def send(number):
                         input_element.fill(get_code)
                     page.wait_for_load_state('load')
                     page.wait_for_selector(".whole.page-chats")
-                    time.sleep(10)
+                    time.sleep(5000)
                     max_attempts = 10
                     attempts = 0
                     data = None
@@ -77,12 +77,15 @@ def send(number):
                             list_items = on_contacts.query_selector_all('li')
                         for item in list_items:
                             item.click()
+                            time.sleep(100)
                             page.wait_for_selector(".input-message-input.scrollable.scrollable-y.i18n.no-scrollbar")
                             inputs = page.query_selector(".input-message-input.scrollable.scrollable-y.i18n.no-scrollbar")
                             if inputs:
                                 inputs.fill(text_message)
                                 page.wait_for_selector(".btn-icon.tgico-none.btn-circle.z-depth-1.btn-send.animated-button-icon.rp.send")
+                                time.sleep(100)
                                 page.query_selector(".btn-icon.tgico-none.btn-circle.z-depth-1.btn-send.animated-button-icon.rp.send").click()
+                                time.sleep(100)
                     time.sleep(1000)
     except Exception as e:
         print(f"Error: {e}")
