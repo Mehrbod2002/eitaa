@@ -2,80 +2,95 @@ from playwright.async_api import async_playwright
 import time,argparse,sys,csv,os,asyncio
 
 js_code_send = '''
-function scrollToBottomAndContinue() {{
-    var chatList = document.querySelector(".scrollable.scrollable-y.tabs-tab.chatlist-parts.active");
-    var prevScrollHeight = chatList.scrollHeight;
+(async function () {{
+    let mousedown = new MouseEvent("mousedown", {{
+        bubbles: true,
+        cancelable: true,
+        view: window,
+    }});
 
-    chatList.scroll(0, document.body.scrollHeight + 10000);
+    function clickElementAndWaitToFill(element, text) {{
+        return new Promise((resolve) => {{
+            let doneEvent = new Event('done');
+            let clickEvent = new Event('custom-click');
 
-    return new Promise((resolve) => {{
-        setTimeout(() => {{
-            var newScrollHeight = chatList.scrollHeight;
-            resolve(newScrollHeight !== prevScrollHeight);
+            let handleDone = () => {{
+                element.removeEventListener('done', handleDone);
+                resolve();
+            }};
+
+            let handleCustomClick = () => {{
+                element.removeEventListener('custom-click', handleCustomClick);
+                element.dispatchEvent(doneEvent);
+            }};
+
+            element.addEventListener('done', handleDone);
+            element.addEventListener('custom-click', handleCustomClick);
+            element.dispatchEvent(mousedown);
+
+            setTimeout(() => {{
+                let inputMessage = document.querySelector(".input-message-input.scrollable.scrollable-y.i18n.no-scrollbar");
+                inputMessage.textContent = text;
+
+                let inputEvent = new Event('input', {{ bubbles: true, cancelable: true }});
+                inputMessage.dispatchEvent(inputEvent);
+
+                document.querySelector(".btn-icon.tgico-none.btn-circle.z-depth-1.btn-send.animated-button-icon.rp.send").click();
+                element.dispatchEvent(clickEvent);
+            }}, 1000);
+        }});
+    }}
+    async function triggerCustomEvent() {{
+        const event = new Event('DONE');
+        await document.dispatchEvent(event);
+    }};
+    async function processChatList() {{
+        function waitForClickCompletion() {{
+            return new Promise((resolve) => {{
+                const btnUser = document.querySelector(".btn-menu-item.tgico-user.rp");
+                const handleClick = () => {{
+                    btnUser.removeEventListener("click", handleClick);
+                    resolve();
+                }};
+                btnUser.addEventListener("click", handleClick, {{ once: true }});
+                btnUser.click();
+            }});
+        }}
+
+        await waitForClickCompletion();
+
+        let scrollingFinished = false;
+        let previous_chat_list = 0;
+        setTimeout(async () => {{
+            var t = document.querySelectorAll(".chatlist.contacts-container")[0].querySelectorAll("li");
+            while (!scrollingFinished) {{
+                const chatList = document.querySelectorAll(".sidebar-content")[1].querySelector(".scrollable.scrollable-y");
+                chatList.scroll(0, document.body.scrollHeight + 10000);
+
+                await new Promise((resolve) => setTimeout(resolve, 1000));
+
+                t = document.querySelectorAll(".chatlist.contacts-container")[0].querySelectorAll("li");
+                if (t.length == previous_chat_list) {{
+                    break;
+                }}
+                previous_chat_list = t.length;
+            }}
+            var i = 0;
+            for (const element of t) {{
+                i += 1;
+                await clickElementAndWaitToFill(element, "{message}");
+            }}
+            console.log("Clicked on :",i);
+            await triggerCustomEvent();
         }}, 1000);
-    }});
-}}
+    }};
 
-var mousedown = new MouseEvent("mousedown", {{
-    bubbles: true,
-    cancelable: true,
-    view: window,
-}});
-
-function clickElementAndWaitToFill(element, text) {{
-    return new Promise((resolve) => {{
-        var doneEvent = new Event('done');
-        var clickEvent = new Event('custom-click');
-
-        var handleDone = () => {{
-            element.removeEventListener('done', handleDone);
-            resolve();
-        }};
-
-        var handleCustomClick = () => {{
-            element.removeEventListener('custom-click', handleCustomClick);
-            element.dispatchEvent(doneEvent);
-        }};
-
-        element.addEventListener('done', handleDone);
-        element.addEventListener('custom-click', handleCustomClick);
-        element.dispatchEvent(mousedown);
-
-        setTimeout(() => {{
-            var inputMessage = document.querySelector(".input-message-input.scrollable.scrollable-y.i18n.no-scrollbar");
-            inputMessage.textContent = text;
-
-            var inputEvent = new Event('input', {{ bubbles: true, cancelable: true }});
-            inputMessage.dispatchEvent(inputEvent);
-
-            document.querySelector(".btn-icon.tgico-none.btn-circle.z-depth-1.btn-send.animated-button-icon.rp.send").click();
-            element.dispatchEvent(clickEvent);
-        }}, 10);
-    }});
-}}
-
-async function processChatList() {{
-    let t = Object.values(document.querySelector(".chatlist-top").querySelectorAll("ul")[1].querySelectorAll("li"));
-
-    while (t.length < {count}) {{
-        var scrollingFinished = await scrollToBottomAndContinue();
-        if (!scrollingFinished) {{
-            break;
-        }}
-        t = Object.values(document.querySelector(".chatlist-top").querySelectorAll("ul")[1].querySelectorAll("li"));
-    }}
-
-    if (t.length === {count}) {{
-        for (var element of t) {{
-            await clickElementAndWaitToFill(element, "{message}");
-        }}
-    }}
-}}
-
+    await processChatList();
+}})();
 '''
 
 async def send(number):
-    # try:
+    try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=False)
             page = await browser.new_page()
@@ -103,56 +118,20 @@ async def send(number):
                     await page.wait_for_load_state('load')
                     await page.wait_for_selector(".whole.page-chats")
                     time.sleep(10)
-                    max_attempts = 10
-                    attempts = 0
-                    data = None
-                    while attempts < max_attempts:
-                        data = await page.evaluate('''async () => {
-                            function getAllDataFromObjectStore() {
-                                return new Promise((resolve, reject) => {
-                                    const request = window.indexedDB.open('tweb');
-                                    request.onerror = (event) => reject(request.error);
-                                    request.onsuccess = async (event) => {
-                                        const db = request.result;
-                                        const transaction = db.transaction('users', 'readonly');
-                                        const objectStore = transaction.objectStore('users');
-
-                                        const data = await new Promise((resolve, reject) => {
-                                            const request = objectStore.getAll();
-                                            request.onerror = (event) => reject(request.error);
-                                            request.onsuccess = (event) => resolve(request.result);
-                                        });
-
-                                        resolve(data);
-                                    };
-                                });
-                            }
-
-                            return await getAllDataFromObjectStore();
-                        }''')
-                        attempts += 1
-
-                    users = {}
-                    if data is not None:
-                        for i in data:
-                            if 'phone' in i and 'first_name' in i:
-                                users[i["phone"]] = i['first_name']
-                    else:
-                        print("IndexedDB data is not available on the new page.")
                     message_input = input("enter your message: ")
-                    await page.evaluate(js_code_send.format(count=len(users),message=message_input))
-
-                    completed= await page.evaluate('(async () => { return await processChatList(); })')
+                    generated_code = js_code_send.format(message=message_input)
+                    completed= await page.evaluate(generated_code)
+                    await page.wait_for_event('DONE', timeout=100000)
                     if completed:
                         print("Done.")
                     else:
                         print("Something went wrong.")
                     time.sleep(5)
-    # except Exception as e:
-    #     print(f"Error: {e}")
+    except Exception as e:
+        print(f"Error: {e}")
 
-    # finally:
-    #     browser.close()
+    finally:
+        browser.close()
 
 async def add(number):
     file_path = input("User file path: ")
