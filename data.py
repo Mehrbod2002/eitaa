@@ -1,40 +1,113 @@
-from playwright.sync_api import sync_playwright
-import time,argparse,sys,csv,os
+from playwright.async_api import async_playwright
+import time,argparse,sys,csv,os,asyncio
 
-def send(number):
-    try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
+js_code_send = '''
+function scrollToBottomAndContinue() {{
+    var chatList = document.querySelector(".scrollable.scrollable-y.tabs-tab.chatlist-parts.active");
+    var prevScrollHeight = chatList.scrollHeight;
+
+    chatList.scroll(0, document.body.scrollHeight + 10000);
+
+    return new Promise((resolve) => {{
+        setTimeout(() => {{
+            var newScrollHeight = chatList.scrollHeight;
+            resolve(newScrollHeight !== prevScrollHeight);
+        }}, 1000);
+    }});
+}}
+
+var mousedown = new MouseEvent("mousedown", {{
+    bubbles: true,
+    cancelable: true,
+    view: window,
+}});
+
+function clickElementAndWaitToFill(element, text) {{
+    return new Promise((resolve) => {{
+        var doneEvent = new Event('done');
+        var clickEvent = new Event('custom-click');
+
+        var handleDone = () => {{
+            element.removeEventListener('done', handleDone);
+            resolve();
+        }};
+
+        var handleCustomClick = () => {{
+            element.removeEventListener('custom-click', handleCustomClick);
+            element.dispatchEvent(doneEvent);
+        }};
+
+        element.addEventListener('done', handleDone);
+        element.addEventListener('custom-click', handleCustomClick);
+        element.dispatchEvent(mousedown);
+
+        setTimeout(() => {{
+            var inputMessage = document.querySelector(".input-message-input.scrollable.scrollable-y.i18n.no-scrollbar");
+            inputMessage.textContent = text;
+
+            var inputEvent = new Event('input', {{ bubbles: true, cancelable: true }});
+            inputMessage.dispatchEvent(inputEvent);
+
+            document.querySelector(".btn-icon.tgico-none.btn-circle.z-depth-1.btn-send.animated-button-icon.rp.send").click();
+            element.dispatchEvent(clickEvent);
+        }}, 10);
+    }});
+}}
+
+async function processChatList() {{
+    let t = Object.values(document.querySelector(".chatlist-top").querySelectorAll("ul")[1].querySelectorAll("li"));
+
+    while (t.length < {count}) {{
+        var scrollingFinished = await scrollToBottomAndContinue();
+        if (!scrollingFinished) {{
+            break;
+        }}
+        t = Object.values(document.querySelector(".chatlist-top").querySelectorAll("ul")[1].querySelectorAll("li"));
+    }}
+
+    if (t.length === {count}) {{
+        for (var element of t) {{
+            await clickElementAndWaitToFill(element, "{message}");
+        }}
+    }}
+}}
+
+'''
+
+async def send(number):
+    # try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=False)
+            page = await browser.new_page()
 
             url = 'https://web.eitaa.com/'
 
-            page.goto(url)
+            await page.goto(url)
 
-            page.wait_for_selector('.input-field-input')
-            input_elements = page.query_selector_all('.input-field-input')
+            await page.wait_for_selector('.input-field-input')
+            input_elements = await page.query_selector_all('.input-field-input')
 
             if len(input_elements) >= 2:
-                    input_elements[1].type(number)
-                    page.wait_for_selector('.c-ripple')
-                    page.click('.btn-primary.btn-color-primary')
-                    page.wait_for_selector(".input-wrapper")
+                    await input_elements[1].type(number)
+                    await page.wait_for_selector('.c-ripple')
+                    await page.click('.btn-primary.btn-color-primary')
+                    await page.wait_for_selector(".input-wrapper")
                     get_code = input("Verification Code: ")
 
                     input_selector = 'input[type="tel"]'
-                    page.wait_for_selector(input_selector)
-                    input_element = page.query_selector(input_selector)
+                    await page.wait_for_selector(input_selector)
+                    input_element = await page.query_selector(input_selector)
 
                     if input_element:
-                        input_element.fill(get_code)
-                    page.wait_for_load_state('load')
-                    page.wait_for_selector(".whole.page-chats")
+                        await input_element.fill(get_code)
+                    await page.wait_for_load_state('load')
+                    await page.wait_for_selector(".whole.page-chats")
                     time.sleep(10)
                     max_attempts = 10
                     attempts = 0
                     data = None
                     while attempts < max_attempts:
-                        data = page.evaluate('''async () => {
+                        data = await page.evaluate('''async () => {
                             function getAllDataFromObjectStore() {
                                 return new Promise((resolve, reject) => {
                                     const request = window.indexedDB.open('tweb');
@@ -66,34 +139,22 @@ def send(number):
                                 users[i["phone"]] = i['first_name']
                     else:
                         print("IndexedDB data is not available on the new page.")
-                    on_contacts = page.query_selector(".chatlist-top").query_selector_all("ul")[1]
-                    if on_contacts:
-                        text_message = input("Insert your message: ")
-                        if len(text_message) == 0:
-                            raise "Text message is empty"
-                        list_items = on_contacts.query_selector_all('li')
-                        while len(list_items) <= len(users)-5:
-                            page.evaluate('document.querySelector(".scrollable.scrollable-y.tabs-tab.chatlist-parts.active").scroll(0,document.body.scrollHeight+10000000)')
-                            list_items = on_contacts.query_selector_all('li')
-                        for item in list_items:
-                            item.click()
-                            time.sleep(0.3)
-                            page.wait_for_selector(".input-message-input.scrollable.scrollable-y.i18n.no-scrollbar")
-                            inputs = page.query_selector(".input-message-input.scrollable.scrollable-y.i18n.no-scrollbar")
-                            if inputs:
-                                inputs.fill(text_message)
-                                page.wait_for_selector(".btn-icon.tgico-none.btn-circle.z-depth-1.btn-send.animated-button-icon.rp.send")
-                                time.sleep(0.2)
-                                page.query_selector(".btn-icon.tgico-none.btn-circle.z-depth-1.btn-send.animated-button-icon.rp.send").click()
-                                time.sleep(0.2)
+                    message_input = input("enter your message: ")
+                    await page.evaluate(js_code_send.format(count=len(users),message=message_input))
+
+                    completed= await page.evaluate('(async () => { return await processChatList(); })')
+                    if completed:
+                        print("Done.")
+                    else:
+                        print("Something went wrong.")
                     time.sleep(5)
-    except Exception as e:
-        print(f"Error: {e}")
+    # except Exception as e:
+    #     print(f"Error: {e}")
 
-    finally:
-        browser.close()
+    # finally:
+    #     browser.close()
 
-def add(number):
+async def add(number):
     file_path = input("User file path: ")
     if os.path.exists(file_path) == False:
         sys.exit("File not exist")
@@ -106,35 +167,35 @@ def add(number):
         sys.exit("Users list is null")
     to_add = data[1:]
     try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=False)
-            page = browser.new_page()
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=False)
+            page = await browser.new_page()
 
             url = 'https://web.eitaa.com/'
 
-            page.goto(url)
+            await page.goto(url)
 
-            page.wait_for_selector('.input-field-input')
-            input_elements = page.query_selector_all('.input-field-input')
+            await page.wait_for_selector('.input-field-input')
+            input_elements = await page.query_selector_all('.input-field-input')
 
             if len(input_elements) >= 2:
                     input_elements[1].type(number)
-                    page.wait_for_selector('.c-ripple')
-                    page.click('.btn-primary.btn-color-primary')
-                    page.wait_for_selector(".input-wrapper")
+                    await page.wait_for_selector('.c-ripple')
+                    await page.click('.btn-primary.btn-color-primary')
+                    await page.wait_for_selector(".input-wrapper")
                     get_code = input("Verification Code: ")
 
                     input_selector = 'input[type="tel"]'
-                    page.wait_for_selector(input_selector)
-                    input_element = page.query_selector(input_selector)
+                    await page.wait_for_selector(input_selector)
+                    input_element = await page.query_selector(input_selector)
 
                     if input_element:
                         input_element.fill(get_code)
-                    page.wait_for_load_state('load')
-                    page.wait_for_selector(".whole.page-chats")
+                    await page.wait_for_load_state('load')
+                    await page.wait_for_selector(".whole.page-chats")
                     time.sleep(10)
-                    page.query_selector('.btn-icon.btn-menu-toggle.rp.sidebar-tools-button.is-visible').click()
-                    page.query_selector(".btn-menu-item.tgico-user.rp").click()
+                    await page.query_selector('.btn-icon.btn-menu-toggle.rp.sidebar-tools-button.is-visible').click()
+                    await page.query_selector(".btn-menu-item.tgico-user.rp").click()
                     added = 0
                     for adder in to_add:
                         number = 0
@@ -142,18 +203,18 @@ def add(number):
                             number = adder[1][0:3] + " " + adder[1][3:6] + " " + adder[1][6:10] + " " + adder[1][10:13]
                         else:
                             continue
-                        page.query_selector(".btn-circle.btn-corner.z-depth-1.is-visible.tgico-add.rp").click()
-                        page.wait_for_selector(".popup-header")
-                        page.query_selector(".name-fields").query_selector(".input-field-input").fill(adder[0])
-                        page.query_selector_all(".input-field.input-field-phone")[1].query_selector(".input-field-input").fill(number)
-                        page.wait_for_timeout(100)
-                        if page.query_selector(".popup-header").query_selector("button").is_disabled() == False:
-                            page.query_selector(".popup-header").query_selector("button").click()
-                            page.wait_for_function(
+                        await page.query_selector(".btn-circle.btn-corner.z-depth-1.is-visible.tgico-add.rp").click()
+                        await page.wait_for_selector(".popup-header")
+                        await page.query_selector(".name-fields").query_selector(".input-field-input").fill(adder[0])
+                        await page.query_selector_all(".input-field.input-field-phone")[1].query_selector(".input-field-input").fill(number)
+                        await page.wait_for_timeout(100)
+                        if await page.query_selector(".popup-header").query_selector("button").is_disabled() == False:
+                            await page.query_selector(".popup-header").query_selector("button").click()
+                            await page.wait_for_function(
                                 '() => !document.querySelector(".popup-header").querySelector("button").classList.contains("disabled")',
                             )
-                            if page.query_selector(".popup-header"):
-                                page.query_selector(".btn-icon.popup-close.tgico-close").click()
+                            if await page.query_selector(".popup-header"):
+                                await page.query_selector(".btn-icon.popup-close.tgico-close").click()
                             else:
                                 added += 1
                     print(f"{added} numbers added .")
@@ -164,7 +225,7 @@ def add(number):
     finally:
         browser.close()
 
-def main():
+async def main():
     parser = argparse.ArgumentParser(description='Eitaa App')
     parser.add_argument('-p', type=str, choices=['add','send'],
                         help='Select an option: add or send')
@@ -183,11 +244,11 @@ def main():
             if len(get_number) != 13 and get_number[0] != '+' and get_number[0:4] != '+989':
                 sys.exit("Invalid number")
             number = get_number[0:3] + " " + get_number[3:6] + " " + get_number[6:10] + " " + get_number[10:13]
-            send(number)
+            await send(number)
         else:
             print("No option selected. Please choose an options add or send")
     else:
         print("No option selected. Please choose an options add or send")
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
