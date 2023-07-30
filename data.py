@@ -92,7 +92,7 @@ js_code_send = '''
 async def send(number):
     try:
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=False)
+            browser = await p.chromium.launch(headless=True)
             page = await browser.new_page()
 
             url = 'https://web.eitaa.com/'
@@ -131,7 +131,7 @@ async def send(number):
         print(f"Error: {e}")
 
     finally:
-        browser.close()
+        await browser.close()
 
 async def add(number):
     file_path = input("User file path: ")
@@ -202,7 +202,7 @@ async def add(number):
         print(f"Error: {e}")
 
     finally:
-        browser.close()
+        await browser.close()
 
 async def main():
     parser = argparse.ArgumentParser(description='Eitaa App')
